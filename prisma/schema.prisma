@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Auth ───────────────────────────────────────────────
+enum Role {
+  PATIENT
+  DOCTOR
+  ADMIN
+  RECEPTIONIST
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  role      Role
+  name      String
+  phone     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  patient Patient?
+  doctor  Doctor?
+}
+
+// ─── Patient ────────────────────────────────────────────
+model Patient {
+  id              String  @id @default(cuid())
+  userId          String  @unique
+  user            User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dateOfBirth     String?
+  insurance       String?
+  notes           String?
+
+  appointments     Appointment[]
+  treatmentRecords TreatmentRecord[]
+  invoices         Invoice[]
+  sentMessages     Message[] @relation("MessageSender")
+}
+
+// ─── Doctor / Staff ─────────────────────────────────────
+model Doctor {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  specialty       String
+  photo           String?
+  rating          Float    @default(5.0)
+  bio             String?
+  active          Boolean  @default(true)
+
+  appointments     Appointment[]
+  treatmentRecords TreatmentRecord[]
+}
+
+// ─── Service ────────────────────────────────────────────
+model Service {
+  id          String  @id @default(cuid())
+  name        String
+  description String
+  duration    Int     // minutes
+  category    String  // Preventive, Cosmetic, Restorative, Pediatric, Emergency
+  icon        String?
+  image       String?  // URL/path to service image
+  active      Boolean @default(true)
+
+  appointments Appointment[]
+}
+
+// ─── Location ───────────────────────────────────────────
+model Location {
+  id     String  @id @default(cuid())
+  name   String
+  address String
+  city   String
+  state  String
+  zip    String
+  phone  String
+  hours  String  // JSON string of hours
+  active Boolean @default(true)
+
+  appointments Appointment[]
+}
+
+// ─── Appointment ────────────────────────────────────────
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+model Appointment {
+  id         String            @id @default(cuid())
+  patientId  String
+  patient    Patient           @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  doctorId   String
+  doctor     Doctor            @relation(fields: [doctorId], references: [id], onDelete: Cascade)
+  serviceId  String
+  service    Service           @relation(fields: [serviceId], references: [id])
+  locationId String
+  location   Location          @relation(fields: [locationId], references: [id])
+  date       String            // ISO date string
+  time       String            // HH:MM format
+  status     AppointmentStatus @default(PENDING)
+  reason     String?
+  notes      String?
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+
+  treatmentRecord TreatmentRecord?
+  invoice         Invoice?
+}
+
+// ─── Treatment Record ───────────────────────────────────
+model TreatmentRecord {
+  id            String   @id @default(cuid())
+  patientId     String
+  patient       Patient  @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String   @unique
+  appointment   Appointment @relation(fields: [appointmentId], references: [id])
+  doctorId      String
+  doctor        Doctor   @relation(fields: [doctorId], references: [id])
+  date          String
+  description   String
+  notes         String?
+  createdAt     DateTime @default(now())
+}
+
+// ─── Invoice ────────────────────────────────────────────
+enum InvoiceStatus {
+  PAID
+  UNPAID
+}
+
+model Invoice {
+  id            String        @id @default(cuid())
+  patientId     String
+  patient       Patient       @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  appointmentId String?       @unique
+  appointment   Appointment?  @relation(fields: [appointmentId], references: [id])
+  amount        Float
+  status        InvoiceStatus @default(UNPAID)
+  date          DateTime      @default(now())
+  description   String?
+  createdAt     DateTime      @default(now())
+}
+
+// ─── Message ────────────────────────────────────────────
+model Message {
+  id        String   @id @default(cuid())
+  threadId  String   // groups messages into conversations
+  senderId  String
+  sender    Patient  @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  content   String
+  timestamp DateTime @default(now())
+  read      Boolean  @default(false)
+}
+
+// ─── Contact Message (from public form) ─────────────────
+enum ContactStatus {
+  NEW
+  RESPONDED
+  ARCHIVED
+}
+
+model ContactMessage {
+  id        String        @id @default(cuid())
+  name      String
+  phone     String?
+  email     String
+  message   String
+  status    ContactStatus @default(NEW)
+  createdAt DateTime      @default(now())
+}
+
+// ─── Site Settings (admin-configurable) ────────────────
+model SiteSetting {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Testimonials ─────────────────────────────────────
+model Testimonial {
+  id        String  @id @default(cuid())
+  name      String
+  text      String
+  rating    Int     @default(5)
+  avatar    String?
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ─── Team Members ─────────────────────────────────────
+model TeamMember {
+  id        String  @id @default(cuid())
+  name      String
+  title     String  // e.g. "Lead Dentist", "Dental Hygienist"
+  bio       String?
+  photo     String?
+  email     String?
+  specialty String?
+  active    Boolean @default(true)
+  sortOrder Int     @default(0)
+  createdAt DateTime @default(now())
+}
+
+// ─── Activity Log (track logins & registrations) ─────
+enum ActivityType {
+  LOGIN
+  LOGOUT
+  REGISTRATION
+  APPOINTMENT_BOOKED
+}
+
+model ActivityLog {
+  id        String       @id @default(cuid())
+  type      ActivityType
+  userId    String?
+  email     String
+  name      String?
+  role      String?
+  details   String?      // extra info like "via booking" or IP
+  createdAt DateTime     @default(now())
+
+  @@index([type])
+  @@index([createdAt])
+}
+
+// ─── Page Images (admin-managed backgrounds) ──────────
+model PageImage {
+  id        String  @id @default(cuid())
+  pageKey   String  @unique // "home", "about", "services", "booking", "contact"
+  heroImage String? // hero/banner background image URL
+  heroTitle String? // hero heading text
+  heroSubtitle String? // hero subtitle text
+  updatedAt DateTime @updatedAt
+}
