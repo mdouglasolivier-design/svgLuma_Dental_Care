@@ -3,13 +3,6 @@ import CredentialsProvider from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
 
-function getAuthUrl(req?: any): string {
-  if (typeof window !== "undefined") return window.location.origin;
-  const proto = req?.headers?.["x-forwarded-proto"] || "https";
-  const host = req?.headers?.["x-forwarded-host"] || req?.headers?.host || process.env.NEXTAUTH_URL || "http://localhost:3000";
-  return `${proto}://${host}`;
-}
-
 export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
@@ -66,19 +59,8 @@ export const authOptions: NextAuthOptions = {
     signIn: "/login",
     signOut: "/",
   },
-  cookies: {
-    sessionToken: {
-      name: `next-auth.session-token`,
-      options: {
-        httpOnly: true,
-        sameSite: "lax",
-        path: "/",
-        secure: process.env.NODE_ENV === "production",
-      },
-    },
-  },
   callbacks: {
-    async signIn({ user }) {
+    async signIn() {
       return true;
     },
     async jwt({ token, user }) {
